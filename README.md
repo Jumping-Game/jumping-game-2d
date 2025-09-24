@@ -1,36 +1,73 @@
-This is a Kotlin Multiplatform project targeting Android, iOS.
+# Jumping Game 2D
 
-* [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-    - [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
-    - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-      For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-      the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
-      Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
-      folder is the appropriate location.
+A production-grade, Android-first Kotlin multiplatform prototype of a vertical platformer inspired by Doodle Jump. The repository is structured around a deterministic :core simulation engine and a Jetpack Compose renderer that demonstrates a playable loop on Android.
 
-* [/iosApp](./iosApp/iosApp) contains iOS applications. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+```
++-----------------------------+
+|         androidApp          |
+|  Compose UI, sensors, SFX   |
+|   |                         |
+|   v                         |
+|        GameViewModel        |
+|            |                |
++------------|----------------+
+             v
+       +-----------+
+       |   :core   |
+       | deterministic engine |
+       | RNG, systems, DTOs   |
+       +-----------+
+```
 
-### Build and Run Android Application
+## Modules & Determinism Strategy
 
-To build and run the development version of the Android app, use the run configuration from the run widget
-in your IDE’s toolbar or build it directly from the terminal:
+- `:core` – Kotlin Multiplatform module (commonMain + jvmTest) containing math utilities, deterministic RNG (SplitMix64), fixed timestep engine, world model, gameplay systems, and network DTO scaffolding for future multiplayer. The update order enforces `input → physics → collisions → spawns → score → tick++` for reproducibility.
+- `:androidApp` – Android application with Jetpack Compose UI, accelerometer/touch input plumbing, SoundPool/BGM stubs, DataStore-backed settings, and analytics hooks. It consumes the simulation via `GameViewModel`, ensuring all gameplay decisions stay inside `:core`.
 
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:assembleDebug
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:assembleDebug
-  ```
+Determinism is preserved by:
+- Running the simulation under a fixed 1/60s timestep accumulator.
+- Feeding seeded `WorldRandom` instances everywhere procedural content is generated.
+- Avoiding wall-clock time, random APIs, or per-frame allocations within `:core` hot paths.
 
-### Build and Run iOS Application
+## Getting Started
 
-To build and run the development version of the iOS app, use the run configuration from the run widget
-in your IDE’s toolbar or open the [/iosApp](./iosApp) directory in Xcode and run it from there.
+Prerequisites: JDK 17, Android Studio Koala (or newer), Android SDK 35.
 
----
+```bash
+./gradlew tasks          # verify the toolchain
+./gradlew :androidApp:installDebug  # deploy to a device or emulator
+```
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+### Running Tests & Quality Gates
+
+```bash
+./gradlew test                 # JVM tests (determinism checks)
+./gradlew ktlintCheck          # Kotlin style
+./gradlew detekt               # Static analysis
+./gradlew :androidApp:lint     # Android lint
+./gradlew :androidApp:assembleRelease  # Play-ready bundle
+```
+
+CI (GitHub Actions) runs the full suite: build, tests, lint, detekt, and assembles the release artifact.
+
+## Architecture Highlights
+
+- **Simulation core**: Allocation-free world updates, platform pooling, deterministic RNG, and future-facing network DTOs plus prediction buffer stubs.
+- **Rendering**: Compose `Canvas` renderer that scales and flips world coordinates for an “upward” camera while overlaying HUD elements.
+- **Input**: Accelerometer tilt and touch gestures wired into the deterministic input model. Settings allow tuning tilt sensitivity and toggling music.
+- **Audio & Analytics**: SoundPool wrapper and BGM stub stand ready for asset injection. Analytics registry exposes a single place to swap in Firebase Crashlytics/Analytics instances without leaking keys into source control.
+
+## Roadmap
+
+- Ghost replays seeded from deterministic session logs.
+- Client/server lockstep with real websocket transport, using the existing DTOs and prediction buffers.
+- Optional LibGDX (or other platform) renderer pointing at the same `:core` engine for desktop experimentation.
+
+## Contributing
+
+1. Follow Conventional Commit messages.
+2. Keep gameplay logic in `:core`; platform-specific code lives in its module.
+3. Run `./gradlew ktlintFormat detekt` before opening a PR.
+4. Ensure deterministic tests remain green when touching simulation code.
+
+MIT licensed. Have fun jumping!
