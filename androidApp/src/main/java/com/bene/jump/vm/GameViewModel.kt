@@ -71,18 +71,16 @@ class GameViewModel(
 
     private suspend fun runLoop() {
         var lastTime = SystemClock.elapsedRealtimeNanos()
-        while (isActive) {
-            val now = SystemClock.elapsedRealtimeNanos()
-            val delta = ((now - lastTime).coerceAtMost(50_000_000L)) / 1_000_000_000f
-            lastTime = now
-            loop.advance(delta) { dt ->
-                input.tilt = tiltInput.tilt.value
-                session.step(input, dt)
-                input.pauseRequested = false
-            }
-            emitState()
-            delay(16L)
+        val now = SystemClock.elapsedRealtimeNanos()
+        val delta = ((now - lastTime).coerceAtMost(50_000_000L)) / 1_000_000_000f
+        lastTime = now
+        loop.advance(delta) { dt ->
+            input.tilt = tiltInput.tilt.value
+            session.step(input, dt)
+            input.pauseRequested = false
         }
+        emitState()
+        delay(16L)
     }
 
     private fun applySettings(settings: Settings) {

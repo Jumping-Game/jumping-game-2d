@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 rootProject.name = "jumping-game-2d"
 include(":core")
 include(":androidApp")
+include(":composeApp")

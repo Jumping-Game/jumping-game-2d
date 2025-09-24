@@ -67,6 +67,7 @@ dependencies {
     implementation(project(":core"))
 
     implementation(platform(libs.compose.bom))
+    implementation("com.google.android.material:material:1.10.0")
     implementation(libs.bundles.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
