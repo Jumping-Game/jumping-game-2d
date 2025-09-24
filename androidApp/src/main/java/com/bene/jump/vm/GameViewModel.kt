@@ -13,6 +13,7 @@ import com.bene.jump.data.Settings
 import com.bene.jump.data.SettingsStore
 import com.bene.jump.input.TiltInput
 import com.bene.jump.input.TouchInput
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,18 +70,20 @@ class GameViewModel(
         )
     }
 
-    private suspend fun runLoop() {
+    private suspend fun CoroutineScope.runLoop() {
         var lastTime = SystemClock.elapsedRealtimeNanos()
-        val now = SystemClock.elapsedRealtimeNanos()
-        val delta = ((now - lastTime).coerceAtMost(50_000_000L)) / 1_000_000_000f
-        lastTime = now
-        loop.advance(delta) { dt ->
-            input.tilt = tiltInput.tilt.value
-            session.step(input, dt)
-            input.pauseRequested = false
+        while (isActive) {
+            val now = SystemClock.elapsedRealtimeNanos()
+            val delta = ((now - lastTime).coerceAtMost(50_000_000L)) / 1_000_000_000f
+            lastTime = now
+            loop.advance(delta) { dt ->
+                input.tilt = tiltInput.tilt.value
+                session.step(input, dt)
+                input.pauseRequested = false
+            }
+            emitState()
+            delay(16L)
         }
-        emitState()
-        delay(16L)
     }
 
     private fun applySettings(settings: Settings) {
