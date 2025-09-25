@@ -8,8 +8,8 @@ import com.bene.jump.core.engine.FixedTimestepLoop
 import com.bene.jump.core.model.GameConfig
 import com.bene.jump.core.model.GameInput
 import com.bene.jump.core.model.SessionPhase
-import com.bene.jump.core.sim.GameSession
 import com.bene.jump.core.net.RoomState
+import com.bene.jump.core.sim.GameSession
 import com.bene.jump.data.NetPrefsStore
 import com.bene.jump.data.Settings
 import com.bene.jump.data.SettingsStore
@@ -145,11 +145,12 @@ class GameViewModel(
                     role = state.role,
                     roomState = state.roomState,
                     players = state.lobby,
-                    maxPlayers = when {
-                        state.lobbyMaxPlayers > 0 -> state.lobbyMaxPlayers
-                        previous.maxPlayers > 0 -> previous.maxPlayers
-                        else -> 0
-                    },
+                    maxPlayers =
+                        when {
+                            state.lobbyMaxPlayers > 0 -> state.lobbyMaxPlayers
+                            previous.maxPlayers > 0 -> previous.maxPlayers
+                            else -> 0
+                        },
                     countdown = state.countdown,
                     selectedCharacter = localPlayer?.characterId ?: previous.selectedCharacter,
                     ready = localPlayer?.ready ?: previous.ready,
