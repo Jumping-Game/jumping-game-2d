@@ -231,4 +231,12 @@ class RtSocket(
         private const val INPUT_TYPE = "input"
         private const val INPUT_BATCH_TYPE = "input_batch"
     }
+
+    suspend fun close(reason: CloseReason? = null) {
+        sessionMutex.withLock {
+            val current = session ?: return
+            runCatching { current.close(reason ?: CloseReason(CloseReason.Codes.NORMAL, "client")) }
+            session = null
+        }
+    }
 }
