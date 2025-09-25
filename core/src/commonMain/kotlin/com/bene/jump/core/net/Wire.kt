@@ -67,6 +67,7 @@ data class LobbyPlayer(
     val name: String,
     val ready: Boolean,
     val role: Role,
+    val characterId: String? = null,
 )
 
 @Serializable
@@ -188,7 +189,7 @@ data class S2CWelcome(
     @Serializable
     data class LobbySnapshot(
         val players: List<LobbyPlayer>,
-        val maxPlayers: Int,
+        val maxPlayers: Int = 0,
     )
 }
 
@@ -197,6 +198,7 @@ data class S2CWelcome(
 data class S2CLobbyState(
     val roomState: RoomState,
     val players: List<LobbyPlayer>,
+    val maxPlayers: Int = 0,
 ) : S2CMessage
 
 @Serializable

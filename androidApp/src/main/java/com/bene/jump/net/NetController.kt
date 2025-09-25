@@ -96,6 +96,7 @@ class NetController(
     private val pendingSeq = AtomicInteger(1)
     private var interpolationDelayMs: Long = 100L
     private var useInputBatch: Boolean = true
+    private var lobbyMaxPlayers: Int = 0
 
     fun start(config: Config) {
         this.config = config
@@ -298,6 +299,7 @@ class NetController(
         remotePlayerStates.clear()
         awaitingStart = welcome.roomState != RoomState.RUNNING
         val lobbyPlayers = welcome.lobby?.players.orEmpty()
+        lobbyMaxPlayers = welcome.lobby?.maxPlayers ?: lobbyMaxPlayers
         if (roomState == RoomState.RUNNING) {
             phase = ConnectionPhase.Running
         } else if (roomState == RoomState.FINISHED) {
@@ -314,6 +316,7 @@ class NetController(
                 role = role,
                 roomState = roomState,
                 lobby = lobbyPlayers,
+                lobbyMaxPlayers = lobbyMaxPlayers,
                 countdown = countdown,
                 resumeToken = welcome.resumeToken,
                 ackTick = null,
@@ -389,6 +392,7 @@ class NetController(
             it.copy(
                 roomState = roomState,
                 lobby = state.players,
+                lobbyMaxPlayers = state.maxPlayers,
                 countdown = countdown,
             )
         }

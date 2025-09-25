@@ -21,6 +21,7 @@ data class NetState(
     val role: Role = Role.MEMBER,
     val roomState: RoomState = RoomState.LOBBY,
     val lobby: List<LobbyPlayer> = emptyList(),
+    val lobbyMaxPlayers: Int = 0,
     val countdown: S2CStartCountdown? = null,
     val playerId: String? = null,
     val resumeToken: String? = null,
