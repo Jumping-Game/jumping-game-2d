@@ -11,7 +11,7 @@ import com.bene.jump.core.net.Checksums
 import com.bene.jump.core.net.ClientPredBuffer
 import com.bene.jump.core.net.CompactState
 import com.bene.jump.core.net.Interpolator
-import com.bene.jump.core.net.LobbyPlayer
+import com.bene.jump.core.net.NetErrorCode
 import com.bene.jump.core.net.NetPlayer
 import com.bene.jump.core.net.Role
 import com.bene.jump.core.net.RoomState
@@ -26,6 +26,7 @@ import com.bene.jump.core.net.S2CStartCountdown
 import com.bene.jump.core.net.S2CStart
 import com.bene.jump.core.net.S2CWelcome
 import com.bene.jump.core.net.asEnvelope
+import com.bene.jump.data.NetPrefsStore
 import com.bene.jump.vm.PlayerUi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -38,37 +39,29 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.collections.ArrayDeque
 import kotlin.collections.ArrayList
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 class NetController(
     private val session: GameSession,
     private val socket: RtSocket,
     private val scope: CoroutineScope,
+    private val prefsStore: NetPrefsStore? = null,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) {
-    enum class Phase { IDLE, CONNECTING, RUNNING, RECONNECTING, FINISHED }
-
-    data class Status(
-        val phase: Phase = Phase.IDLE,
-        val playerId: String? = null,
-        val roomId: String? = null,
-        val role: Role? = null,
-        val roomState: RoomState = RoomState.LOBBY,
-        val lobby: List<LobbyPlayer> = emptyList(),
-        val countdown: S2CStartCountdown? = null,
-        val lastError: String? = null,
-        val lastErrorCode: String? = null,
-    )
-
     data class Config(
+        val roomId: String,
         val wsUrl: String,
         val playerName: String,
         val clientVersion: String,
+        val resumeToken: String? = null,
+        val playerId: String? = null,
+        val lastAckTick: Int? = null,
         val useInputBatch: Boolean,
         val interpolationDelayMs: Int,
     )
 
-    private val statusFlow = MutableStateFlow(Status())
-    val status: StateFlow<Status> = statusFlow
+    private val stateFlow = MutableStateFlow(NetState())
+    val state: StateFlow<NetState> = stateFlow
 
     private val buffer = ClientPredBuffer(512)
     private val compactScratch = CompactState()
@@ -88,12 +81,17 @@ class NetController(
     private var roomState: RoomState = RoomState.LOBBY
     private var countdown: S2CStartCountdown? = null
     private var lastAckTick: Int = -1
+    private var persistedAckTick: Int = -1
+    private var lastInputSeq: Int = -1
+    private var droppedSnapshots: Int = 0
     private var lastSentTick: Int = -1
     private var latestTick: Int = -1
     private var latestInputTick: Int = -1
     private var lastSendAtMs: Long = 0L
     private var lastChecksumTick: Int = -1
-    private var phase: Phase = Phase.IDLE
+    private var rttMs: Int = 0
+    private var skewMs: Int = 0
+    private var phase: ConnectionPhase = ConnectionPhase.Idle
     private var awaitingStart: Boolean = false
     private val pendingSeq = AtomicInteger(1)
     private var interpolationDelayMs: Long = 100L
@@ -103,9 +101,29 @@ class NetController(
         this.config = config
         this.useInputBatch = config.useInputBatch
         this.interpolationDelayMs = config.interpolationDelayMs.toLong()
-        if (phase == Phase.RUNNING || phase == Phase.CONNECTING) return
-        phase = Phase.CONNECTING
-        statusFlow.value = Status(phase = Phase.CONNECTING, role = role, roomState = roomState)
+        this.resumeToken = config.resumeToken
+        this.playerId = config.playerId
+        this.roomId = config.roomId
+        this.lastAckTick = config.lastAckTick ?: -1
+        this.persistedAckTick = this.lastAckTick
+        this.lastInputSeq = -1
+        this.droppedSnapshots = 0
+        if (phase == ConnectionPhase.Running || phase == ConnectionPhase.Connecting) return
+        phase = ConnectionPhase.Connecting
+        stateFlow.update {
+            it.copy(
+                connectionPhase = phase,
+                connected = false,
+                roomId = config.roomId,
+                playerId = config.playerId ?: it.playerId,
+                resumeToken = config.resumeToken ?: it.resumeToken,
+                ackTick = lastAckTick.takeIf { tick -> tick >= 0 },
+                lastInputSeq = null,
+                droppedSnapshots = 0,
+                lastError = null,
+                lastErrorCode = null,
+            )
+        }
         controllerJob?.cancel()
         controllerJob =
             scope.launch {
@@ -124,15 +142,17 @@ class NetController(
         controllerJob?.cancel()
         controllerJob = null
         scope.launch { socket.close() }
-        phase = Phase.FINISHED
+        phase = ConnectionPhase.Finished
         roomState = RoomState.FINISHED
         countdown = null
-        statusFlow.value =
-            statusFlow.value.copy(
-                phase = Phase.FINISHED,
+        stateFlow.update {
+            it.copy(
+                connectionPhase = phase,
+                connected = false,
                 roomState = roomState,
                 countdown = null,
             )
+        }
     }
 
     fun step(
@@ -140,6 +160,9 @@ class NetController(
         dt: Float,
     ) {
         drainSnapshots()
+        if (phase != ConnectionPhase.Running) {
+            return
+        }
         val tick = session.world.tick.toInt()
         val axisX = input.tilt.coerceIn(-1f, 1f)
         val jump = input.touchDown
@@ -150,7 +173,7 @@ class NetController(
         latestTick = simTick
         compactScratch.capture(session.world)
         buffer.putState(simTick, compactScratch)
-        if (phase == Phase.RUNNING) {
+        if (phase == ConnectionPhase.Running) {
             maybeAttachChecksum(tick)
             maybeSendInputs(latestInputTick)
         }
@@ -182,16 +205,25 @@ class NetController(
     private fun handleOpened() {
         val resumeAck = lastAckTick
         buffer.reset()
-        lastAckTick = resumeAck
         lastSentTick = -1
         latestInputTick = -1
         latestTick = session.world.tick.toInt()
         snapshotQueue.clear()
+        lastChecksumTick = -1
+        droppedSnapshots = 0
+        lastInputSeq = -1
+        pendingSeq.set(1)
         val cfg = checkNotNull(config)
         val resume = resumeToken
-        phase = if (resume != null && playerId != null && resumeAck >= 0) Phase.RECONNECTING else Phase.CONNECTING
-        statusFlow.value = statusFlow.value.copy(phase = phase)
         awaitingStart = true
+        phase = if (resume != null && playerId != null && resumeAck >= 0) ConnectionPhase.Reconnecting else ConnectionPhase.Connecting
+        stateFlow.update {
+            it.copy(
+                connectionPhase = phase,
+                connected = true,
+                droppedSnapshots = 0,
+            )
+        }
         val message =
             if (resume != null && playerId != null && resumeAck >= 0) {
                 C2SReconnect(
@@ -218,7 +250,7 @@ class NetController(
             is S2CStart -> onStart(payload)
             is S2CSnapshot -> onSnapshot(event.envelope.ts, payload)
             is S2CError -> onError(payload)
-            is S2CPong -> Unit
+            is S2CPong -> onPong(event.envelope.ts, payload)
             is S2CPlayerPresence -> onPresence(payload)
             is S2CFinish -> onFinish(payload)
             is S2CRoleChanged -> onRoleChanged(payload)
@@ -227,17 +259,26 @@ class NetController(
     }
 
     private fun handleClosed(event: RtSocket.Event.Closed) {
-        if (phase == Phase.FINISHED) return
-        if (phase != Phase.CONNECTING) {
-            phase = Phase.RECONNECTING
-            statusFlow.update { it.copy(phase = Phase.RECONNECTING) }
+        stateFlow.update {
+            it.copy(
+                connected = false,
+                connectionPhase = if (phase == ConnectionPhase.Finished) ConnectionPhase.Finished else ConnectionPhase.Reconnecting,
+            )
+        }
+        if (phase != ConnectionPhase.Finished) {
+            phase = ConnectionPhase.Reconnecting
         }
     }
 
     private fun handleFailure(throwable: Throwable) {
-        statusFlow.update { it.copy(lastError = throwable.message) }
-        phase = if (phase == Phase.FINISHED) Phase.FINISHED else Phase.RECONNECTING
-        statusFlow.update { it.copy(phase = phase) }
+        phase = if (phase == ConnectionPhase.Finished) ConnectionPhase.Finished else ConnectionPhase.Reconnecting
+        stateFlow.update {
+            it.copy(
+                connectionPhase = phase,
+                connected = false,
+                lastError = throwable.message,
+            )
+        }
     }
 
     private fun onWelcome(welcome: S2CWelcome) {
@@ -251,27 +292,36 @@ class NetController(
         session.world.tick = 0
         buffer.reset()
         lastAckTick = -1
+        persistedAckTick = -1
         latestInputTick = -1
         interpolation.clear()
         remotePlayerStates.clear()
         awaitingStart = welcome.roomState != RoomState.RUNNING
         val lobbyPlayers = welcome.lobby?.players.orEmpty()
         if (roomState == RoomState.RUNNING) {
-            phase = Phase.RUNNING
+            phase = ConnectionPhase.Running
         } else if (roomState == RoomState.FINISHED) {
-            phase = Phase.FINISHED
+            phase = ConnectionPhase.Finished
+        } else {
+            phase = ConnectionPhase.Connecting
         }
-        statusFlow.update {
+        stateFlow.update {
             it.copy(
-                phase = phase,
+                connectionPhase = phase,
+                connected = true,
                 playerId = welcome.playerId,
                 roomId = welcome.roomId,
                 role = role,
                 roomState = roomState,
                 lobby = lobbyPlayers,
                 countdown = countdown,
+                resumeToken = welcome.resumeToken,
+                ackTick = null,
+                lastInputSeq = null,
+                droppedSnapshots = 0,
             )
         }
+        persistCredentialsIfNeeded()
     }
 
     private fun onStart(start: S2CStart) {
@@ -279,12 +329,12 @@ class NetController(
         session.world.tick = start.startTick.toLong()
         latestTick = start.startTick
         buffer.reset()
-        phase = Phase.RUNNING
+        phase = ConnectionPhase.Running
         roomState = RoomState.RUNNING
         countdown = null
-        statusFlow.update {
+        stateFlow.update {
             it.copy(
-                phase = Phase.RUNNING,
+                connectionPhase = phase,
                 roomState = roomState,
                 countdown = null,
             )
@@ -300,18 +350,24 @@ class NetController(
     }
 
     private fun onError(error: S2CError) {
-        statusFlow.update { it.copy(lastError = error.message, lastErrorCode = error.code) }
-        phase = Phase.RECONNECTING
-        statusFlow.update { it.copy(phase = phase) }
+        val code = NetErrorCode.fromRaw(error.code)
+        stateFlow.update {
+            it.copy(
+                lastError = error.message,
+                lastErrorCode = code,
+            )
+        }
+        phase = ConnectionPhase.Reconnecting
+        stateFlow.update { it.copy(connectionPhase = phase) }
     }
 
     private fun onFinish(finish: S2CFinish) {
-        phase = Phase.FINISHED
+        phase = ConnectionPhase.Finished
         roomState = RoomState.FINISHED
         countdown = null
-        statusFlow.update {
+        stateFlow.update {
             it.copy(
-                phase = Phase.FINISHED,
+                connectionPhase = phase,
                 roomState = roomState,
                 countdown = null,
             )
@@ -329,7 +385,7 @@ class NetController(
     private fun onLobbyState(state: S2CLobbyState) {
         roomState = state.roomState
         countdown = countdown.takeIf { roomState == RoomState.STARTING }
-        statusFlow.update {
+        stateFlow.update {
             it.copy(
                 roomState = roomState,
                 lobby = state.players,
@@ -342,7 +398,7 @@ class NetController(
         awaitingStart = true
         roomState = RoomState.STARTING
         this.countdown = countdown
-        statusFlow.update {
+        stateFlow.update {
             it.copy(
                 roomState = roomState,
                 countdown = countdown,
@@ -356,7 +412,16 @@ class NetController(
         } else if (role == Role.MASTER) {
             role = Role.MEMBER
         }
-        statusFlow.update { it.copy(role = role) }
+        stateFlow.update { it.copy(role = role) }
+    }
+
+    private fun onPong(serverTs: Long, pong: S2CPong) {
+        val now = clock()
+        val rtt = (now - pong.t0).coerceAtLeast(0L)
+        val skew = (((pong.t1 + serverTs) / 2.0) - ((pong.t0 + now) / 2.0)).roundToInt()
+        rttMs = rtt.toInt()
+        skewMs = skew
+        stateFlow.update { it.copy(rttMs = rttMs, skewMs = skewMs) }
     }
 
     private fun drainSnapshots() {
@@ -369,15 +434,26 @@ class NetController(
     private fun applySnapshot(envelope: SnapshotEnvelope) {
         val snapshot = envelope.snapshot
         snapshot.ackTick?.let {
-            lastAckTick = max(lastAckTick, it)
-            buffer.trimBefore(it)
+            if (it > lastAckTick) {
+                lastAckTick = it
+                persistAckTickIfNeeded()
+            }
         }
+        snapshot.lastInputSeq?.let { lastInputSeq = it }
+        snapshot.stats?.droppedSnapshots?.let { droppedSnapshots = it }
         snapshot.players.forEach { player ->
             if (player.id == playerId) {
                 applyLocalPlayer(snapshot.tick, player)
             } else {
                 applyRemotePlayer(envelope.ts, player)
             }
+        }
+        stateFlow.update {
+            it.copy(
+                ackTick = lastAckTick.takeIf { tick -> tick >= 0 },
+                lastInputSeq = lastInputSeq.takeIf { seq -> seq >= 0 },
+                droppedSnapshots = droppedSnapshots,
+            )
         }
     }
 
@@ -487,6 +563,21 @@ class NetController(
     private fun nextSeq(): UInt {
         val next = pendingSeq.getAndUpdate { current -> if (current == Int.MAX_VALUE) 0 else current + 1 }
         return next.toUInt()
+    }
+
+    private fun persistCredentialsIfNeeded() {
+        val pid = playerId ?: return
+        val token = resumeToken ?: return
+        val store = prefsStore ?: return
+        scope.launch { store.persistCredentials(pid, token) }
+    }
+
+    private fun persistAckTickIfNeeded() {
+        val ack = lastAckTick
+        val store = prefsStore ?: return
+        if (ack < 0 || ack == persistedAckTick) return
+        persistedAckTick = ack
+        scope.launch { store.updateLastAckTick(ack) }
     }
 
     companion object {

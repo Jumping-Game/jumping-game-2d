@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.bene.jump.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -24,7 +25,7 @@ data class Settings(
     val interpolationDelayMs: Int = DEFAULT_INTERPOLATION_DELAY_MS,
 ) {
     companion object {
-        const val DEFAULT_WS_URL: String = "wss://rt.localhost.example.com/v1/ws"
+        const val DEFAULT_WS_URL: String = BuildConfig.WS_URL
         const val DEFAULT_INTERPOLATION_DELAY_MS: Int = 100
     }
 }

@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.hilt.android)
+    alias(libs.plugins.kotlin.kapt)
 }
 
 android {
@@ -61,10 +63,20 @@ android {
         warningsAsErrors = true
         abortOnError = true
     }
+
+    testOptions {
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }
 }
 
 kotlin {
     jvmToolchain(17)
+}
+
+kapt {
+    correctErrorTypes = true
 }
 
 dependencies {
@@ -81,10 +93,19 @@ dependencies {
     implementation(libs.androidx.datastore)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging)
+    implementation(libs.hilt.android)
+    implementation(libs.androidx.hilt.navigation.compose)
+    kapt(libs.hilt.compiler)
+    implementation(libs.kotlinx.serialization.json)
 
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.leakcanary.android)
 
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.androidx.test.espresso)
+    testImplementation(libs.junit.jupiter.api)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.mockwebserver)
+    testImplementation(libs.turbine)
 }

@@ -174,6 +174,11 @@ class RtSocket(
         private var tokens = ratePerSecond.toDouble()
         private var lastRefill = 0L
 
+        fun reset() {
+            tokens = ratePerSecond.toDouble()
+            lastRefill = 0L
+        }
+
         suspend fun await(nowProvider: () -> Long) {
             while (true) {
                 val now = nowProvider()
@@ -210,6 +215,7 @@ class RtSocket(
     ) : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
             backoff.reset()
+            rateLimiter.reset()
             channel.trySendSafe(Event.Opened)
             startHeartbeat()
         }
