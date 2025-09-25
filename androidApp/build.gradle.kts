@@ -16,6 +16,9 @@ android {
         versionCode = 1
         versionName = "0.1.0"
         vectorDrawables.useSupportLibrary = true
+        buildConfigField("String", "API_BASE", "\"http://10.0.2.2:8080\"")
+        buildConfigField("String", "WS_URL", "\"ws://10.0.2.2:8081/v1/ws\"")
+        buildConfigField("int", "PROTOCOL_PV", "1")
     }
 
     buildTypes {
@@ -43,6 +46,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     composeOptions {
@@ -75,10 +79,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.coroutines.android)
     implementation(libs.androidx.datastore)
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.okhttp)
-    implementation(libs.ktor.client.websockets)
-    implementation(libs.ktor.client.logging)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
 
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.leakcanary.android)

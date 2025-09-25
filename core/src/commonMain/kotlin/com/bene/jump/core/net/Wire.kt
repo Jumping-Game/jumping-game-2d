@@ -11,7 +11,7 @@ const val PROTOCOL_VERSION: Int = 1
 
 val NetworkJson: Json =
     Json {
-        ignoreUnknownKeys = true
+        ignoreUnknownKeys = false
         encodeDefaults = true
         explicitNulls = false
     }
@@ -20,7 +20,7 @@ val NetworkJson: Json =
 data class Envelope<T>(
     val type: String,
     val pv: Int = PROTOCOL_VERSION,
-    val seq: Int,
+    val seq: UInt,
     val ts: Long,
     val payload: T,
 )
@@ -35,7 +35,77 @@ fun <T> decodeEnvelope(
     serializer: KSerializer<T>,
 ): Envelope<T> = NetworkJson.decodeFromString(Envelope.serializer(serializer), json)
 
+// ----- Shared types -----
+
+@Serializable
+enum class Role {
+    @SerialName("master")
+    MASTER,
+
+    @SerialName("member")
+    MEMBER,
+}
+
+@Serializable
+enum class RoomState {
+    @SerialName("lobby")
+    LOBBY,
+
+    @SerialName("starting")
+    STARTING,
+
+    @SerialName("running")
+    RUNNING,
+
+    @SerialName("finished")
+    FINISHED,
+}
+
+@Serializable
+data class LobbyPlayer(
+    val id: String,
+    val name: String,
+    val ready: Boolean,
+    val role: Role,
+)
+
+@Serializable
+data class NetWorldCfg(
+    val worldWidth: Float,
+    val platformWidth: Float,
+    val platformHeight: Float,
+    val gapMin: Float,
+    val gapMax: Float,
+    val gravity: Float,
+    val jumpVy: Float,
+    val springVy: Float,
+    val maxVx: Float,
+    val tiltAccel: Float,
+)
+
+@Serializable
+data class NetDifficultyCfg(
+    val gapMinStart: Float,
+    val gapMinEnd: Float,
+    val gapMaxStart: Float,
+    val gapMaxEnd: Float,
+    val springChanceStart: Float,
+    val springChanceEnd: Float,
+)
+
+@Serializable
+data class NetConfig(
+    val tps: Int,
+    val snapshotRateHz: Int,
+    val maxRollbackTicks: Int,
+    val inputLeadTicks: Int,
+    val world: NetWorldCfg,
+    val difficulty: NetDifficultyCfg,
+)
+
 // ----- Client → Server -----
+
+sealed interface C2SMessage
 
 @Serializable
 @SerialName("join")
@@ -90,41 +160,17 @@ data class C2SReconnect(
     val lastAckTick: Int,
 ) : C2SMessage
 
+@Serializable
+@SerialName("ready_set")
+data class C2SReadySet(val ready: Boolean) : C2SMessage
+
+@Serializable
+@SerialName("start_request")
+data class C2SStartRequest(val countdownSec: Int? = null) : C2SMessage
+
 // ----- Server → Client -----
 
-@Serializable
-data class NetWorldCfg(
-    val worldWidth: Float,
-    val platformWidth: Float,
-    val platformHeight: Float,
-    val gapMin: Float,
-    val gapMax: Float,
-    val gravity: Float,
-    val jumpVy: Float,
-    val springVy: Float,
-    val maxVx: Float,
-    val tiltAccel: Float,
-)
-
-@Serializable
-data class NetDifficultyCfg(
-    val gapMinStart: Float,
-    val gapMinEnd: Float,
-    val gapMaxStart: Float,
-    val gapMaxEnd: Float,
-    val springChanceStart: Float,
-    val springChanceEnd: Float,
-)
-
-@Serializable
-data class NetConfig(
-    val tps: Int,
-    val snapshotRateHz: Int,
-    val maxRollbackTicks: Int,
-    val inputLeadTicks: Int,
-    val world: NetWorldCfg,
-    val difficulty: NetDifficultyCfg,
-)
+sealed interface S2CMessage
 
 @Serializable
 @SerialName("welcome")
@@ -133,8 +179,32 @@ data class S2CWelcome(
     val resumeToken: String,
     val roomId: String,
     val seed: String,
+    val role: Role,
+    val roomState: RoomState,
+    val lobby: LobbySnapshot? = null,
     val cfg: NetConfig,
     val featureFlags: Map<String, Boolean>? = null,
+) : S2CMessage {
+    @Serializable
+    data class LobbySnapshot(
+        val players: List<LobbyPlayer>,
+        val maxPlayers: Int,
+    )
+}
+
+@Serializable
+@SerialName("lobby_state")
+data class S2CLobbyState(
+    val roomState: RoomState,
+    val players: List<LobbyPlayer>,
+) : S2CMessage
+
+@Serializable
+@SerialName("start_countdown")
+data class S2CStartCountdown(
+    val startAtMs: Long,
+    val serverTick: Int,
+    val countdownSec: Int,
 ) : S2CMessage
 
 @Serializable
@@ -145,6 +215,21 @@ data class S2CStart(
     val serverTimeMs: Long,
     val tps: Int,
 ) : S2CMessage
+
+@Serializable
+@SerialName("snapshot")
+data class S2CSnapshot(
+    val tick: Int,
+    val ackTick: Int? = null,
+    val lastInputSeq: Int? = null,
+    val full: Boolean,
+    val players: List<NetPlayer>,
+    val events: List<NetEvent>? = null,
+    val stats: SnapshotStats? = null,
+) : S2CMessage {
+    @Serializable
+    data class SnapshotStats(val droppedSnapshots: Int? = null)
+}
 
 @Serializable
 data class NetPlayer(
@@ -163,21 +248,6 @@ data class NetEvent(
     val y: Float,
     val tick: Int,
 )
-
-@Serializable
-@SerialName("snapshot")
-data class S2CSnapshot(
-    val tick: Int,
-    val ackTick: Int? = null,
-    val lastInputSeq: Int? = null,
-    val full: Boolean,
-    val players: List<NetPlayer>,
-    val events: List<NetEvent>? = null,
-    val stats: SnapshotStats? = null,
-) : S2CMessage {
-    @Serializable
-    data class SnapshotStats(val droppedSnapshots: Int? = null)
-}
 
 @Serializable
 @SerialName("pong")
@@ -206,62 +276,69 @@ data class S2CPlayerPresence(
     val state: String,
 ) : S2CMessage
 
-sealed interface C2SMessage
-
-sealed interface S2CMessage
+@Serializable
+@SerialName("role_changed")
+data class S2CRoleChanged(
+    val newMasterId: String,
+) : S2CMessage
 
 private val s2cSerializers: Map<String, KSerializer<out S2CMessage>> =
     mapOf(
         "welcome" to S2CWelcome.serializer(),
+        "lobby_state" to S2CLobbyState.serializer(),
+        "start_countdown" to S2CStartCountdown.serializer(),
         "start" to S2CStart.serializer(),
         "snapshot" to S2CSnapshot.serializer(),
         "pong" to S2CPong.serializer(),
         "error" to S2CError.serializer(),
         "finish" to S2CFinish.serializer(),
         "player_presence" to S2CPlayerPresence.serializer(),
+        "role_changed" to S2CRoleChanged.serializer(),
     )
 
 @Serializable
 private data class RawEnvelope(
     val type: String,
     val pv: Int,
-    val seq: Int,
+    val seq: UInt,
     val ts: Long,
     val payload: JsonElement,
 )
 
 fun C2SJoin.asEnvelope(
-    seq: Int,
+    seq: UInt,
     ts: Long,
 ): Envelope<C2SJoin> = Envelope("join", PROTOCOL_VERSION, seq, ts, this)
 
 fun C2SInput.asEnvelope(
-    seq: Int,
+    seq: UInt,
     ts: Long,
-): Envelope<C2SInput> {
-    return Envelope("input", PROTOCOL_VERSION, seq, ts, this)
-}
+): Envelope<C2SInput> = Envelope("input", PROTOCOL_VERSION, seq, ts, this)
 
 fun C2SInputBatch.asEnvelope(
-    seq: Int,
+    seq: UInt,
     ts: Long,
-): Envelope<C2SInputBatch> {
-    return Envelope("input_batch", PROTOCOL_VERSION, seq, ts, this)
-}
+): Envelope<C2SInputBatch> = Envelope("input_batch", PROTOCOL_VERSION, seq, ts, this)
 
 fun C2SPing.asEnvelope(
-    seq: Int,
+    seq: UInt,
     ts: Long,
-): Envelope<C2SPing> {
-    return Envelope("ping", PROTOCOL_VERSION, seq, ts, this)
-}
+): Envelope<C2SPing> = Envelope("ping", PROTOCOL_VERSION, seq, ts, this)
 
 fun C2SReconnect.asEnvelope(
-    seq: Int,
+    seq: UInt,
     ts: Long,
-): Envelope<C2SReconnect> {
-    return Envelope("reconnect", PROTOCOL_VERSION, seq, ts, this)
-}
+): Envelope<C2SReconnect> = Envelope("reconnect", PROTOCOL_VERSION, seq, ts, this)
+
+fun C2SReadySet.asEnvelope(
+    seq: UInt,
+    ts: Long,
+): Envelope<C2SReadySet> = Envelope("ready_set", PROTOCOL_VERSION, seq, ts, this)
+
+fun C2SStartRequest.asEnvelope(
+    seq: UInt,
+    ts: Long,
+): Envelope<C2SStartRequest> = Envelope("start_request", PROTOCOL_VERSION, seq, ts, this)
 
 inline fun <reified T> Envelope<T>.encode(): String where T : Any, T : C2SMessage {
     return encodeEnvelope(this, serializer())
@@ -271,13 +348,11 @@ inline fun <reified T> decodeEnvelope(json: String): Envelope<T> {
     return NetworkJson.decodeFromString(Envelope.serializer(serializer()), json)
 }
 
-inline fun <reified T> serializer(): KSerializer<T> {
-    return kotlinx.serialization.serializer()
-}
+inline fun <reified T> serializer(): KSerializer<T> = kotlinx.serialization.serializer()
 
 fun encodeC2S(
     message: C2SMessage,
-    seq: Int,
+    seq: UInt,
     ts: Long,
 ): String {
     return when (message) {
@@ -286,12 +361,15 @@ fun encodeC2S(
         is C2SInputBatch -> encodeEnvelope(Envelope("input_batch", PROTOCOL_VERSION, seq, ts, message), C2SInputBatch.serializer())
         is C2SPing -> encodeEnvelope(Envelope("ping", PROTOCOL_VERSION, seq, ts, message), C2SPing.serializer())
         is C2SReconnect -> encodeEnvelope(Envelope("reconnect", PROTOCOL_VERSION, seq, ts, message), C2SReconnect.serializer())
+        is C2SReadySet -> encodeEnvelope(Envelope("ready_set", PROTOCOL_VERSION, seq, ts, message), C2SReadySet.serializer())
+        is C2SStartRequest -> encodeEnvelope(Envelope("start_request", PROTOCOL_VERSION, seq, ts, message), C2SStartRequest.serializer())
     }
 }
 
-fun decodeS2C(json: String): Envelope<S2CMessage>? {
+fun decodeS2C(json: String): Envelope<S2CMessage> {
     val raw = NetworkJson.decodeFromString(RawEnvelope.serializer(), json)
-    val serializer = s2cSerializers[raw.type] ?: return null
+    require(raw.pv == PROTOCOL_VERSION) { "Unsupported protocol version ${'$'}{raw.pv}" }
+    val serializer = s2cSerializers[raw.type] ?: error("Unknown message type ${'$'}{raw.type}")
     val payload = NetworkJson.decodeFromJsonElement(serializer, raw.payload)
     return Envelope(raw.type, raw.pv, raw.seq, raw.ts, payload)
 }
