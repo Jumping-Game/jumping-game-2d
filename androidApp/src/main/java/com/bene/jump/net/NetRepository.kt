@@ -2,6 +2,7 @@ package com.bene.jump.net
 
 import com.bene.jump.data.NetPrefs
 import com.bene.jump.data.NetPrefsStore
+import com.bene.jump.net.api.CharacterRequest
 import com.bene.jump.net.api.CreateRoomRequest
 import com.bene.jump.net.api.CreateRoomResponse
 import com.bene.jump.net.api.JoinRoomRequest
@@ -37,6 +38,7 @@ class NetRepository(
     private var activeWsUrl: String? = null
     private var activeWsToken: String? = null
     private var lastConnectionConfig: ConnectionConfig? = null
+    private var lastSelectedCharacter: String? = null
 
     init {
         scope.launch {
@@ -63,6 +65,7 @@ class NetRepository(
         activeWsUrl = response.wsUrl
         activeWsToken = response.wsToken
         lastConnectionConfig = connection
+        lastSelectedCharacter = null
         startSocket(response.roomId, response.wsUrl, response.wsToken, connection)
         return response
     }
@@ -76,6 +79,7 @@ class NetRepository(
         activeWsUrl = response.wsUrl
         activeWsToken = response.wsToken
         lastConnectionConfig = connection
+        lastSelectedCharacter = null
         startSocket(response.roomId, response.wsUrl, response.wsToken, connection)
         return response
     }
@@ -90,11 +94,19 @@ class NetRepository(
         activeRoomId = null
         activeWsUrl = null
         activeWsToken = null
+        lastSelectedCharacter = null
     }
 
     suspend fun setReady(ready: Boolean) {
         val room = activeRoomId ?: return
         roomsApi.setReady(room, ReadyRequest(ready))
+    }
+
+    suspend fun setCharacter(characterId: String) {
+        val room = activeRoomId ?: return
+        if (lastSelectedCharacter == characterId) return
+        roomsApi.setCharacter(room, CharacterRequest(characterId))
+        lastSelectedCharacter = characterId
     }
 
     suspend fun startRoom(countdownSec: Int?) {
@@ -108,6 +120,7 @@ class NetRepository(
         val response = roomsApi.joinRoom(room, JoinRoomRequest(config.playerName))
         activeWsUrl = response.wsUrl
         activeWsToken = response.wsToken
+        lastSelectedCharacter = null
         startSocket(response.roomId, response.wsUrl, response.wsToken, config)
         return true
     }

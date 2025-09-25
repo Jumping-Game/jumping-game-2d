@@ -68,6 +68,18 @@ class RoomsApi(
         )
     }
 
+    suspend fun setCharacter(
+        roomId: String,
+        request: CharacterRequest,
+    ) {
+        execute<CharacterRequest, Unit>(
+            method = "POST",
+            path = "/v1/rooms/${'$'}roomId/character",
+            body = request,
+            accept = setOf(204),
+        )
+    }
+
     suspend fun startRoom(
         roomId: String,
         request: StartRoomRequest,
@@ -190,6 +202,9 @@ data class JoinRoomResponse(
 
 @Serializable
 data class ReadyRequest(val ready: Boolean)
+
+@Serializable
+data class CharacterRequest(val characterId: String)
 
 @Serializable
 data class StartRoomRequest(val countdownSec: Int? = null)
