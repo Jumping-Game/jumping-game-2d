@@ -12,7 +12,6 @@ import com.bene.jump.core.net.Envelope
 import com.bene.jump.core.net.S2CMessage
 import com.bene.jump.core.net.decodeS2C
 import com.bene.jump.core.net.encodeC2S
-import com.bene.jump.core.net.encodeEnvelope as encodeEnvelopeWith
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +26,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.KSerializer
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -35,6 +35,7 @@ import okhttp3.WebSocketListener
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
+import com.bene.jump.core.net.encodeEnvelope as encodeEnvelopeWith
 
 class RtSocket(
     client: OkHttpClient? = null,
@@ -128,15 +129,32 @@ class RtSocket(
 
     private fun encodeEnvelopeDynamic(envelope: Envelope<*>): String {
         return when (val payload = envelope.payload) {
-            is C2SJoin -> encodeEnvelopeWith(Envelope(envelope.type, envelope.pv, envelope.seq, envelope.ts, payload), C2SJoin.serializer())
-            is C2SInput -> encodeEnvelopeWith(Envelope(envelope.type, envelope.pv, envelope.seq, envelope.ts, payload), C2SInput.serializer())
-            is C2SInputBatch -> encodeEnvelopeWith(Envelope(envelope.type, envelope.pv, envelope.seq, envelope.ts, payload), C2SInputBatch.serializer())
-            is C2SPing -> encodeEnvelopeWith(Envelope(envelope.type, envelope.pv, envelope.seq, envelope.ts, payload), C2SPing.serializer())
-            is C2SReconnect -> encodeEnvelopeWith(Envelope(envelope.type, envelope.pv, envelope.seq, envelope.ts, payload), C2SReconnect.serializer())
-            is C2SReadySet -> encodeEnvelopeWith(Envelope(envelope.type, envelope.pv, envelope.seq, envelope.ts, payload), C2SReadySet.serializer())
-            is C2SStartRequest -> encodeEnvelopeWith(Envelope(envelope.type, envelope.pv, envelope.seq, envelope.ts, payload), C2SStartRequest.serializer())
+            is C2SJoin -> encodeWithPayload(envelope, payload, C2SJoin.serializer())
+            is C2SInput -> encodeWithPayload(envelope, payload, C2SInput.serializer())
+            is C2SInputBatch -> encodeWithPayload(envelope, payload, C2SInputBatch.serializer())
+            is C2SPing -> encodeWithPayload(envelope, payload, C2SPing.serializer())
+            is C2SReconnect -> encodeWithPayload(envelope, payload, C2SReconnect.serializer())
+            is C2SReadySet -> encodeWithPayload(envelope, payload, C2SReadySet.serializer())
+            is C2SStartRequest -> encodeWithPayload(envelope, payload, C2SStartRequest.serializer())
             else -> throw IllegalArgumentException("Unsupported envelope payload ${payload?.javaClass?.simpleName}")
         }
+    }
+
+    private fun <T> encodeWithPayload(
+        envelope: Envelope<*>,
+        payload: T,
+        serializer: KSerializer<T>,
+    ): String {
+        return encodeEnvelopeWith(
+            Envelope(
+                envelope.type,
+                envelope.pv,
+                envelope.seq,
+                envelope.ts,
+                payload,
+            ),
+            serializer,
+        )
     }
 
     private fun isInputType(obj: Any): Boolean {
@@ -213,30 +231,48 @@ class RtSocket(
         private val backoff: Backoff,
         private val terminated: CompletableDeferred<Unit>,
     ) : WebSocketListener() {
-        override fun onOpen(webSocket: WebSocket, response: Response) {
+        override fun onOpen(
+            webSocket: WebSocket,
+            response: Response,
+        ) {
             backoff.reset()
             rateLimiter.reset()
             channel.trySendSafe(Event.Opened)
             startHeartbeat()
         }
 
-        override fun onMessage(webSocket: WebSocket, text: String) {
+        override fun onMessage(
+            webSocket: WebSocket,
+            text: String,
+        ) {
             runCatching { decodeS2C(text) }
                 .onSuccess { channel.trySendSafe(Event.Message(it)) }
                 .onFailure { channel.trySendSafe(Event.Failure(it)) }
         }
 
-        override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+        override fun onClosing(
+            webSocket: WebSocket,
+            code: Int,
+            reason: String,
+        ) {
             webSocket.close(code, reason)
         }
 
-        override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+        override fun onClosed(
+            webSocket: WebSocket,
+            code: Int,
+            reason: String,
+        ) {
             stopHeartbeat()
             channel.trySendSafe(Event.Closed(code, reason))
             terminated.complete(Unit)
         }
 
-        override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+        override fun onFailure(
+            webSocket: WebSocket,
+            t: Throwable,
+            response: Response?,
+        ) {
             stopHeartbeat()
             channel.trySendSafe(Event.Failure(t))
             terminated.complete(Unit)
@@ -254,7 +290,10 @@ class RtSocket(
         private const val INPUT_BATCH_TYPE = "input_batch"
     }
 
-    suspend fun close(code: Int = 1000, reason: String? = "client") {
+    suspend fun close(
+        code: Int = 1000,
+        reason: String? = "client",
+    ) {
         sessionMutex.withLock {
             val current = webSocket ?: return
             runCatching { current.close(code, reason) }

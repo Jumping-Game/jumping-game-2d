@@ -139,7 +139,10 @@ class NetRepository(
         )
     }
 
-    private fun buildSocketUrl(base: String, token: String): String {
+    private fun buildSocketUrl(
+        base: String,
+        token: String,
+    ): String {
         if (base.contains("token=")) return base
         val separator = if (base.contains('?')) '&' else '?'
         val encoded = URLEncoder.encode(token, StandardCharsets.UTF_8.name())
