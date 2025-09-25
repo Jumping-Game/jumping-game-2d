@@ -22,7 +22,8 @@ enum class NetErrorCode(val raw: String) {
     ROOM_NOT_READY("ROOM_NOT_READY"),
     START_ALREADY("START_ALREADY"),
     COUNTDOWN_ACTIVE("COUNTDOWN_ACTIVE"),
-    UNKNOWN("UNKNOWN");
+    UNKNOWN("UNKNOWN"),
+    ;
 
     companion object {
         fun fromRaw(value: String?): NetErrorCode? {

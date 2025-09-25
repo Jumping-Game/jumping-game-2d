@@ -42,6 +42,7 @@ Multiplayer **vertical jumper** with:
 * **WSS** for realtime (inputs/snapshots, heartbeats, lobby updates).
 * **Deterministic simulation** @ **60 Hz** with **client prediction + server reconciliation** and **delta snapshots**.
 * **Lobby with Room Master**: the **creator is master** and controls when the game starts (countdown → synchronized start).
+* **Character select in lobby**: every player advertises a `characterId` string that the clients render however they like.
 
 ---
 
@@ -175,6 +176,19 @@ POST /v1/rooms/{roomId}/ready
 
 > NOTE: If you prefer WS control messages instead of REST for start/ready, see §8.
 
+### 5.7 Select Character
+
+```http
+POST /v1/rooms/{roomId}/character
+{ "characterId": "jumper_red" }
+→ 204
+```
+
+*Request rules*
+
+* `characterId` is an opaque string; servers may validate against a whitelist.
+* Successful calls broadcast an updated lobby snapshot (see §9.2).
+
 ---
 
 ## 6. WebSocket Lifecycle
@@ -282,7 +296,7 @@ Frequency: 20–30 Hz; server accepts `tick` in window `[currentTick - maxRollba
     "role":"master",
     "roomState":"lobby",
     "lobby":{
-      "players":[{"id":"p_abcd","name":"bene","ready":true,"role":"master","characterId":"aurora"}],
+      "players":[{"id":"p_abcd","name":"bene","ready":true,"role":"master","characterId":"jumper_red"}],
       "maxPlayers":4
     },
     "cfg":{ "tps":60,"snapshotRateHz":10,"maxRollbackTicks":120,"inputLeadTicks":2,
@@ -295,7 +309,7 @@ Frequency: 20–30 Hz; server accepts `tick` in window `[currentTick - maxRollba
 }
 ```
 
-### 9.2 `lobby_state` (membership/ready/role changes)
+### 9.2 `lobby_state` (membership/ready/role/character changes)
 
 ```json
 {
@@ -303,9 +317,10 @@ Frequency: 20–30 Hz; server accepts `tick` in window `[currentTick - maxRollba
   "payload":{
     "roomState":"lobby",
     "players":[
-      {"id":"p_abcd","name":"bene","ready":true,"role":"master","characterId":"aurora"},
-      {"id":"p_efgh","name":"ally","ready":false,"role":"member","characterId":"cobalt"}
-    ]
+      {"id":"p_abcd","name":"bene","ready":true,"role":"master","characterId":"jumper_red"},
+      {"id":"p_efgh","name":"ally","ready":false,"role":"member","characterId":"jumper_green"}
+    ],
+    "maxPlayers":4
   }
 }
 ```
@@ -533,7 +548,7 @@ Frequency: 20–30 Hz; server accepts `tick` in window `[currentTick - maxRollba
 
   * Added **Room Master + Lobby** flow (REST `/start`, optional WS `start_request`).
   * New S2C: `lobby_state`, `start_countdown`, `role_changed`; `welcome` extended with `role`, `roomState`, `lobby`.
-  * New C2S: `character_select`; lobby players now advertise optional `characterId`.
+  * Lobby players now include optional `characterId`; new REST `POST /v1/rooms/{roomId}/character` for selection.
   * Added errors: `NOT_MASTER`, `ROOM_STATE_INVALID`, `ROOM_NOT_READY`, `START_ALREADY`, `COUNTDOWN_ACTIVE`.
   * Clarified local `ws://`/`http://` allowances; compression “recommended” vs “required”.
 
@@ -579,7 +594,7 @@ interface LobbyPlayer {
   name: string;
   ready: boolean;
   role: "master" | "member";
-  characterId?: string;
+  characterId?: string | null;
 }
 
 interface NetWorldCfg {
@@ -604,7 +619,7 @@ interface S2C_Welcome {
 interface S2C_LobbyState {
   roomState: "lobby" | "starting" | "running" | "finished";
   players: LobbyPlayer[];
-  maxPlayers?: number;
+  maxPlayers: number;
 }
 interface S2C_StartCountdown { startAtMs: number; serverTick: number; countdownSec: number; }
 interface S2C_Start { startTick: number; serverTick: number; serverTimeMs: number; tps: number; }
