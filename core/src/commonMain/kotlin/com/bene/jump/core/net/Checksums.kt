@@ -8,7 +8,11 @@ private const val FNV_PRIME = 0x100000001b3L
 private const val MASK_64 = -0x1L
 
 object Checksums {
-    fun compute(state: CompactState, world: World, platformSample: Int = 4): Long {
+    fun compute(
+        state: CompactState,
+        world: World,
+        platformSample: Int = 4,
+    ): Long {
         var hash = FNV_OFFSET_BASIS
         hash = mixFloat(hash, state.x)
         hash = mixFloat(hash, state.y)
@@ -27,14 +31,32 @@ object Checksums {
         return hash
     }
 
-    fun computeHex(state: CompactState, world: World, platformSample: Int = 4): String =
-        compute(state, world, platformSample).toULong().toString(16)
+    fun computeHex(
+        state: CompactState,
+        world: World,
+        platformSample: Int = 4,
+    ): String {
+        return compute(state, world, platformSample).toULong().toString(16)
+    }
 
-    private fun mixFloat(hash: Long, value: Float): Long = mixInt(hash, value.toRawBits())
+    private fun mixFloat(
+        hash: Long,
+        value: Float,
+    ): Long {
+        return mixInt(hash, value.toRawBits())
+    }
 
-    private fun mixInt(hash: Long, value: Int): Long = mixLong(hash, value.toLong() and 0xFFFFFFFFL)
+    private fun mixInt(
+        hash: Long,
+        value: Int,
+    ): Long {
+        return mixLong(hash, value.toLong() and 0xFFFFFFFFL)
+    }
 
-    private fun mixLong(hash: Long, value: Long): Long {
+    private fun mixLong(
+        hash: Long,
+        value: Long,
+    ): Long {
         var h = hash
         var v = value
         for (i in 0 until 8) {
@@ -44,7 +66,10 @@ object Checksums {
         return h
     }
 
-    private fun mixByte(hash: Long, byte: Int): Long {
+    private fun mixByte(
+        hash: Long,
+        byte: Int,
+    ): Long {
         val v = byte.toLong() and 0xFF
         return ((hash xor v) * FNV_PRIME) and MASK_64
     }

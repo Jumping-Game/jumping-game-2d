@@ -9,17 +9,28 @@ class Interpolator(
 ) {
     private val buffers = mutableMapOf<String, StateBuffer>()
 
-    fun push(playerId: String, sampleTimeMs: Long, state: CompactState) {
+    fun push(
+        playerId: String,
+        sampleTimeMs: Long,
+        state: CompactState,
+    ) {
         val buffer = buffers.getOrPut(playerId) { StateBuffer(bufferSize) }
         buffer.push(sampleTimeMs, state)
     }
 
-    fun sample(playerId: String, renderTimeMs: Long, out: CompactState): Boolean {
+    fun sample(
+        playerId: String,
+        renderTimeMs: Long,
+        out: CompactState,
+    ): Boolean {
         val buffer = buffers[playerId] ?: return false
         return buffer.sample(renderTimeMs, maxExtrapolationMs, out)
     }
 
-    fun prune(renderTimeMs: Long, keepWindowMs: Long) {
+    fun prune(
+        renderTimeMs: Long,
+        keepWindowMs: Long,
+    ) {
         val cutoff = renderTimeMs - keepWindowMs
         buffers.values.forEach { it.prune(cutoff) }
     }
@@ -45,7 +56,10 @@ class Interpolator(
             }
         }
 
-        fun push(sampleTimeMs: Long, state: CompactState) {
+        fun push(
+            sampleTimeMs: Long,
+            state: CompactState,
+        ) {
             val index = (head + size) and mask
             states[index].copyFrom(state)
             times[index] = sampleTimeMs
@@ -56,7 +70,11 @@ class Interpolator(
             }
         }
 
-        fun sample(renderTimeMs: Long, maxExtrapolationMs: Long, out: CompactState): Boolean {
+        fun sample(
+            renderTimeMs: Long,
+            maxExtrapolationMs: Long,
+            out: CompactState,
+        ): Boolean {
             if (size == 0) return false
             val newestIndex = (head + size - 1) and mask
             val newestTime = times[newestIndex]
@@ -108,7 +126,12 @@ class Interpolator(
             }
         }
 
-        private fun interpolate(a: CompactState, b: CompactState, t: Float, out: CompactState) {
+        private fun interpolate(
+            a: CompactState,
+            b: CompactState,
+            t: Float,
+            out: CompactState,
+        ) {
             val clamped = min(1f, max(0f, t))
             out.x = lerp(a.x, b.x, clamped)
             out.y = lerp(a.y, b.y, clamped)
@@ -116,6 +139,12 @@ class Interpolator(
             out.vy = lerp(a.vy, b.vy, clamped)
         }
 
-        private fun lerp(a: Float, b: Float, t: Float): Float = a + (b - a) * t
+        private fun lerp(
+            a: Float,
+            b: Float,
+            t: Float,
+        ): Float {
+            return a + (b - a) * t
+        }
     }
 }

@@ -47,8 +47,8 @@ class SettingsStore(private val context: Context) {
                 multiplayerEnabled = prefs[multiplayerKey] ?: false,
                 wsUrl = prefs[wsUrlKey] ?: Settings.DEFAULT_WS_URL,
                 inputBatchEnabled = prefs[inputBatchKey] ?: true,
-                interpolationDelayMs = prefs[interpolationDelayKey]
-                    ?: Settings.DEFAULT_INTERPOLATION_DELAY_MS,
+                interpolationDelayMs =
+                    prefs[interpolationDelayKey] ?: Settings.DEFAULT_INTERPOLATION_DELAY_MS,
             )
         }
 
