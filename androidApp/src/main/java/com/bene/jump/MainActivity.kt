@@ -20,6 +20,7 @@ import com.bene.jump.input.TouchInput
 import com.bene.jump.ui.GameScreen
 import com.bene.jump.ui.MenuScreen
 import com.bene.jump.ui.SettingsScreen
+import com.bene.jump.ui.DevSettingsScreen
 import com.bene.jump.ui.theme.JumpTheme
 import com.bene.jump.vm.GameViewModel
 import kotlinx.coroutines.launch
@@ -65,6 +66,7 @@ class MainActivity : ComponentActivity() {
                                 gameViewModel.togglePause()
                             },
                             onSettings = { screen = Screen.Settings },
+                            onDevSettings = { screen = Screen.DevSettings },
                         )
                     Screen.Game ->
                         GameScreen(
@@ -88,6 +90,23 @@ class MainActivity : ComponentActivity() {
                             },
                             onBack = { screen = Screen.Menu },
                         )
+                    Screen.DevSettings ->
+                        DevSettingsScreen(
+                            settings = settings,
+                            onMultiplayerEnabled = { enabled ->
+                                scope.launch { settingsStore.setMultiplayerEnabled(enabled) }
+                            },
+                            onWsUrlChanged = { url ->
+                                scope.launch { settingsStore.setWsUrl(url) }
+                            },
+                            onInputBatchChanged = { enabled ->
+                                scope.launch { settingsStore.setInputBatchEnabled(enabled) }
+                            },
+                            onInterpolationDelayChanged = { value ->
+                                scope.launch { settingsStore.setInterpolationDelay(value) }
+                            },
+                            onBack = { screen = Screen.Menu },
+                        )
                 }
             }
         }
@@ -108,5 +127,6 @@ class MainActivity : ComponentActivity() {
         Menu,
         Game,
         Settings,
+        DevSettings,
     }
 }

@@ -22,6 +22,7 @@ fun MenuScreen(
     onPlay: () -> Unit,
     onResume: () -> Unit,
     onSettings: () -> Unit,
+    onDevSettings: () -> Unit,
 ) {
     Column(
         modifier =
@@ -42,6 +43,9 @@ fun MenuScreen(
         }
         Button(onClick = onSettings) {
             Text(text = stringResource(id = R.string.menu_settings))
+        }
+        Button(onClick = onDevSettings) {
+            Text(text = stringResource(id = R.string.menu_dev_settings))
         }
     }
 }

@@ -13,6 +13,8 @@ import com.bene.jump.data.Settings
 import com.bene.jump.data.SettingsStore
 import com.bene.jump.input.TiltInput
 import com.bene.jump.input.TouchInput
+import com.bene.jump.net.NetController
+import com.bene.jump.net.RtSocket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +35,9 @@ class GameViewModel(
     private val loop = FixedTimestepLoop()
     private val input = GameInput()
     private val platformScratch = ArrayList<PlatformUi>(config.platformBuffer)
+    private val remotePlayerScratch = ArrayList<PlayerUi>(4)
+    private var netController: NetController? = null
+    private var lastSettings: Settings? = null
 
     private val mutableState = MutableStateFlow(buildState())
     val state: StateFlow<GameUiState> = mutableState.asStateFlow()
@@ -67,6 +72,7 @@ class GameViewModel(
                     height = world.player.bounds.halfHeight * 2f,
                 ),
             platforms = emptyList(),
+            remotePlayers = emptyList(),
         )
     }
 
@@ -78,7 +84,12 @@ class GameViewModel(
             lastTime = now
             loop.advance(delta) { dt ->
                 input.tilt = tiltInput.tilt.value
-                session.step(input, dt)
+                val controller = netController
+                if (controller != null) {
+                    controller.step(input, dt)
+                } else {
+                    session.step(input, dt)
+                }
                 input.pauseRequested = false
             }
             emitState()
@@ -87,10 +98,53 @@ class GameViewModel(
     }
 
     private fun applySettings(settings: Settings) {
+        val previous = lastSettings
         tiltInput.setSensitivity(settings.tiltSensitivity)
         if (settings.musicEnabled && session.phase == SessionPhase.Running) {
             AnalyticsRegistry.service.track("music_enabled")
         }
+        if (settings.multiplayerEnabled) {
+            if (netController == null) {
+                val controller =
+                    NetController(
+                        session = session,
+                        socket = RtSocket(),
+                        scope = viewModelScope,
+                    )
+                netController = controller
+                controller.start(
+                    NetController.Config(
+                        wsUrl = settings.wsUrl,
+                        playerName = DEFAULT_PLAYER_NAME,
+                        clientVersion = CLIENT_VERSION,
+                        useInputBatch = settings.inputBatchEnabled,
+                        interpolationDelayMs = settings.interpolationDelayMs,
+                    ),
+                )
+            } else if (previous == null || previous.wsUrl != settings.wsUrl || previous.inputBatchEnabled != settings.inputBatchEnabled || previous.interpolationDelayMs != settings.interpolationDelayMs) {
+                netController?.stop()
+                netController =
+                    NetController(
+                        session = session,
+                        socket = RtSocket(),
+                        scope = viewModelScope,
+                    ).also { controller ->
+                        controller.start(
+                            NetController.Config(
+                                wsUrl = settings.wsUrl,
+                                playerName = DEFAULT_PLAYER_NAME,
+                                clientVersion = CLIENT_VERSION,
+                                useInputBatch = settings.inputBatchEnabled,
+                                interpolationDelayMs = settings.interpolationDelayMs,
+                            ),
+                        )
+                    }
+            }
+        } else {
+            netController?.stop()
+            netController = null
+        }
+        lastSettings = settings
     }
 
     private fun emitState() {
@@ -106,6 +160,8 @@ class GameViewModel(
                 ),
             )
         }
+        remotePlayerScratch.clear()
+        netController?.sampleRemotePlayers(SystemClock.elapsedRealtime(), remotePlayerScratch)
         mutableState.value =
             GameUiState(
                 phase = session.phase,
@@ -121,6 +177,7 @@ class GameViewModel(
                         height = world.player.bounds.halfHeight * 2f,
                     ),
                 platforms = platformScratch.toList(),
+                remotePlayers = remotePlayerScratch.toList(),
             )
         if (session.phase == SessionPhase.GameOver) {
             AnalyticsRegistry.service.track("game_over", mapOf("score" to world.score))
@@ -134,5 +191,16 @@ class GameViewModel(
     fun restart(seed: Long = session.world.seed) {
         session.restart(seed)
         AnalyticsRegistry.service.track("restart", mapOf("seed" to seed))
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        netController?.stop()
+        netController = null
+    }
+
+    companion object {
+        private const val CLIENT_VERSION = "android-dev"
+        private const val DEFAULT_PLAYER_NAME = "Player"
     }
 }

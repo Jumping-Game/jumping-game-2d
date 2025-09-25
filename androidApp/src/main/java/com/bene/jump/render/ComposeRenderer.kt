@@ -46,5 +46,15 @@ fun ComposeRenderer(
             topLeft = Offset(playerLeft, playerTop),
             size = Size(player.width * scale, player.height * scale),
         )
+
+        state.remotePlayers.forEach { remote ->
+            val left = (remote.x - remote.width * 0.5f + state.worldWidth * 0.5f) * scale
+            val top = size.height - ((remote.y - originY) + remote.height * 0.5f) * scale
+            drawRect(
+                color = colors.tertiary,
+                topLeft = Offset(left, top),
+                size = Size(remote.width * scale, remote.height * scale),
+            )
+        }
     }
 }

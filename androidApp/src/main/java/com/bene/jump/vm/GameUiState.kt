@@ -10,6 +10,7 @@ data class GameUiState(
     val cameraY: Float = 0f,
     val player: PlayerUi = PlayerUi(),
     val platforms: List<PlatformUi> = emptyList(),
+    val remotePlayers: List<PlayerUi> = emptyList(),
 )
 
 data class PlayerUi(
