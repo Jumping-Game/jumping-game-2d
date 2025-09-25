@@ -22,8 +22,8 @@ import com.bene.jump.core.net.S2CPlayerPresence
 import com.bene.jump.core.net.S2CPong
 import com.bene.jump.core.net.S2CRoleChanged
 import com.bene.jump.core.net.S2CSnapshot
-import com.bene.jump.core.net.S2CStartCountdown
 import com.bene.jump.core.net.S2CStart
+import com.bene.jump.core.net.S2CStartCountdown
 import com.bene.jump.core.net.S2CWelcome
 import com.bene.jump.core.net.asEnvelope
 import com.bene.jump.data.NetPrefsStore
@@ -415,13 +415,21 @@ class NetController(
         stateFlow.update { it.copy(role = role) }
     }
 
-    private fun onPong(serverTs: Long, pong: S2CPong) {
+    private fun onPong(
+        serverTs: Long,
+        pong: S2CPong,
+    ) {
         val now = clock()
         val rtt = (now - pong.t0).coerceAtLeast(0L)
         val skew = (((pong.t1 + serverTs) / 2.0) - ((pong.t0 + now) / 2.0)).roundToInt()
         rttMs = rtt.toInt()
         skewMs = skew
-        stateFlow.update { it.copy(rttMs = rttMs, skewMs = skewMs) }
+        stateFlow.update {
+            it.copy(
+                rttMs = rttMs,
+                skewMs = skewMs,
+            )
+        }
     }
 
     private fun drainSnapshots() {
