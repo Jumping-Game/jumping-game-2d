@@ -15,17 +15,20 @@ private val Context.settingsDataStore: DataStore<Preferences> by preferencesData
 data class Settings(
     val musicEnabled: Boolean = true,
     val tiltSensitivity: Float = 1f,
+    val darkTheme: Boolean = true,
 )
 
 class SettingsStore(private val context: Context) {
     private val musicKey = booleanPreferencesKey("music")
     private val tiltKey = floatPreferencesKey("tilt")
+    private val darkThemeKey = booleanPreferencesKey("dark_theme")
 
     val settings: Flow<Settings> =
         context.settingsDataStore.data.map { prefs ->
             Settings(
                 musicEnabled = prefs[musicKey] ?: true,
                 tiltSensitivity = prefs[tiltKey] ?: 1f,
+                darkTheme = prefs[darkThemeKey] ?: true,
             )
         }
 
@@ -38,6 +41,12 @@ class SettingsStore(private val context: Context) {
     suspend fun setTiltSensitivity(sensitivity: Float) {
         context.settingsDataStore.edit { prefs ->
             prefs[tiltKey] = sensitivity
+        }
+    }
+
+    suspend fun setDarkTheme(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[darkThemeKey] = enabled
         }
     }
 }

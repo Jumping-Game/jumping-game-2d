@@ -6,6 +6,7 @@
     <string name="menu_restart">Restart</string>
     <string name="settings_title">Settings</string>
     <string name="settings_music">Music</string>
+    <string name="settings_dark_theme">Dark mode</string>
     <string name="settings_tilt">Tilt Sensitivity</string>
     <string name="game_over">Game Over</string>
 </resources>

@@ -22,6 +22,7 @@ import com.bene.jump.data.Settings
 fun SettingsScreen(
     settings: Settings,
     onMusicChanged: (Boolean) -> Unit,
+    onThemeChanged: (Boolean) -> Unit,
     onTiltChanged: (Float) -> Unit,
     onBack: () -> Unit,
 ) {
@@ -29,6 +30,9 @@ fun SettingsScreen(
         Text(text = stringResource(id = R.string.settings_title))
         RowItem(label = stringResource(id = R.string.settings_music)) {
             Switch(checked = settings.musicEnabled, onCheckedChange = onMusicChanged)
+        }
+        RowItem(label = stringResource(id = R.string.settings_dark_theme)) {
+            Switch(checked = settings.darkTheme, onCheckedChange = onThemeChanged)
         }
         Text(text = stringResource(id = R.string.settings_tilt))
         Slider(

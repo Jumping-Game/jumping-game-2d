@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
             var screen by remember { mutableStateOf(Screen.Menu) }
             val scope = rememberCoroutineScope()
 
-            JumpTheme {
+            JumpTheme(darkTheme = settings.darkTheme) {
                 when (screen) {
                     Screen.Menu ->
                         MenuScreen(
@@ -79,6 +79,9 @@ class MainActivity : ComponentActivity() {
                             settings = settings,
                             onMusicChanged = { enabled ->
                                 scope.launch { settingsStore.setMusicEnabled(enabled) }
+                            },
+                            onThemeChanged = { enabled ->
+                                scope.launch { settingsStore.setDarkTheme(enabled) }
                             },
                             onTiltChanged = { value ->
                                 scope.launch { settingsStore.setTiltSensitivity(value) }
