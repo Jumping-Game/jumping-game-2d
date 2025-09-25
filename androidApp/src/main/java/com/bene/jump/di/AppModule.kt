@@ -30,15 +30,21 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideSettingsStore(@ApplicationContext context: Context): SettingsStore = SettingsStore(context)
+    fun provideSettingsStore(
+        @ApplicationContext context: Context,
+    ): SettingsStore = SettingsStore(context)
 
     @Provides
     @Singleton
-    fun provideNetPrefsStore(@ApplicationContext context: Context): NetPrefsStore = NetPrefsStore(context)
+    fun provideNetPrefsStore(
+        @ApplicationContext context: Context,
+    ): NetPrefsStore = NetPrefsStore(context)
 
     @Provides
     @Singleton
-    fun provideTiltInput(@ApplicationContext context: Context): TiltInput = TiltInput(context)
+    fun provideTiltInput(
+        @ApplicationContext context: Context,
+    ): TiltInput = TiltInput(context)
 
     @Provides
     @Singleton
