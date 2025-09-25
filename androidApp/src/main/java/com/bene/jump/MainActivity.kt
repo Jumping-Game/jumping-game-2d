@@ -17,10 +17,10 @@ import com.bene.jump.data.Settings
 import com.bene.jump.data.SettingsStore
 import com.bene.jump.input.TiltInput
 import com.bene.jump.input.TouchInput
+import com.bene.jump.ui.DevSettingsScreen
 import com.bene.jump.ui.GameScreen
 import com.bene.jump.ui.MenuScreen
 import com.bene.jump.ui.SettingsScreen
-import com.bene.jump.ui.DevSettingsScreen
 import com.bene.jump.ui.theme.JumpTheme
 import com.bene.jump.vm.GameViewModel
 import kotlinx.coroutines.launch

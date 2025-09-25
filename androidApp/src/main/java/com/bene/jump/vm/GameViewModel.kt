@@ -121,7 +121,12 @@ class GameViewModel(
                         interpolationDelayMs = settings.interpolationDelayMs,
                     ),
                 )
-            } else if (previous == null || previous.wsUrl != settings.wsUrl || previous.inputBatchEnabled != settings.inputBatchEnabled || previous.interpolationDelayMs != settings.interpolationDelayMs) {
+            } else if (
+                previous == null ||
+                previous.wsUrl != settings.wsUrl ||
+                previous.inputBatchEnabled != settings.inputBatchEnabled ||
+                previous.interpolationDelayMs != settings.interpolationDelayMs
+            ) {
                 netController?.stop()
                 netController =
                     NetController(

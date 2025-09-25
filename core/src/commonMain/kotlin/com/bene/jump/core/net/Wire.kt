@@ -238,39 +238,56 @@ fun C2SJoin.asEnvelope(
 fun C2SInput.asEnvelope(
     seq: Int,
     ts: Long,
-): Envelope<C2SInput> = Envelope("input", PROTOCOL_VERSION, seq, ts, this)
+): Envelope<C2SInput> {
+    return Envelope("input", PROTOCOL_VERSION, seq, ts, this)
+}
 
 fun C2SInputBatch.asEnvelope(
     seq: Int,
     ts: Long,
-): Envelope<C2SInputBatch> = Envelope("input_batch", PROTOCOL_VERSION, seq, ts, this)
+): Envelope<C2SInputBatch> {
+    return Envelope("input_batch", PROTOCOL_VERSION, seq, ts, this)
+}
 
 fun C2SPing.asEnvelope(
     seq: Int,
     ts: Long,
-): Envelope<C2SPing> = Envelope("ping", PROTOCOL_VERSION, seq, ts, this)
+): Envelope<C2SPing> {
+    return Envelope("ping", PROTOCOL_VERSION, seq, ts, this)
+}
 
 fun C2SReconnect.asEnvelope(
     seq: Int,
     ts: Long,
-): Envelope<C2SReconnect> = Envelope("reconnect", PROTOCOL_VERSION, seq, ts, this)
+): Envelope<C2SReconnect> {
+    return Envelope("reconnect", PROTOCOL_VERSION, seq, ts, this)
+}
 
-inline fun <reified T> Envelope<T>.encode(): String where T : Any, T : C2SMessage =
-    encodeEnvelope(this, serializer())
+inline fun <reified T> Envelope<T>.encode(): String where T : Any, T : C2SMessage {
+    return encodeEnvelope(this, serializer())
+}
 
-inline fun <reified T> decodeEnvelope(json: String): Envelope<T> =
-    NetworkJson.decodeFromString(Envelope.serializer(serializer()), json)
+inline fun <reified T> decodeEnvelope(json: String): Envelope<T> {
+    return NetworkJson.decodeFromString(Envelope.serializer(serializer()), json)
+}
 
-inline fun <reified T> serializer(): KSerializer<T> = kotlinx.serialization.serializer()
+inline fun <reified T> serializer(): KSerializer<T> {
+    return kotlinx.serialization.serializer()
+}
 
-fun encodeC2S(message: C2SMessage, seq: Int, ts: Long): String =
-    when (message) {
+fun encodeC2S(
+    message: C2SMessage,
+    seq: Int,
+    ts: Long,
+): String {
+    return when (message) {
         is C2SJoin -> encodeEnvelope(Envelope("join", PROTOCOL_VERSION, seq, ts, message), C2SJoin.serializer())
         is C2SInput -> encodeEnvelope(Envelope("input", PROTOCOL_VERSION, seq, ts, message), C2SInput.serializer())
         is C2SInputBatch -> encodeEnvelope(Envelope("input_batch", PROTOCOL_VERSION, seq, ts, message), C2SInputBatch.serializer())
         is C2SPing -> encodeEnvelope(Envelope("ping", PROTOCOL_VERSION, seq, ts, message), C2SPing.serializer())
         is C2SReconnect -> encodeEnvelope(Envelope("reconnect", PROTOCOL_VERSION, seq, ts, message), C2SReconnect.serializer())
     }
+}
 
 fun decodeS2C(json: String): Envelope<S2CMessage>? {
     val raw = NetworkJson.decodeFromString(RawEnvelope.serializer(), json)

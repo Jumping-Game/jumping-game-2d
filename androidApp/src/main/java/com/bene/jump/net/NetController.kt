@@ -14,17 +14,13 @@ import com.bene.jump.core.net.Interpolator
 import com.bene.jump.core.net.NetPlayer
 import com.bene.jump.core.net.S2CError
 import com.bene.jump.core.net.S2CFinish
+import com.bene.jump.core.net.S2CPlayerPresence
 import com.bene.jump.core.net.S2CPong
 import com.bene.jump.core.net.S2CSnapshot
 import com.bene.jump.core.net.S2CStart
 import com.bene.jump.core.net.S2CWelcome
-import com.bene.jump.core.net.S2CPlayerPresence
 import com.bene.jump.core.net.asEnvelope
 import com.bene.jump.vm.PlayerUi
-import kotlin.collections.ArrayDeque
-import kotlin.collections.ArrayList
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.max
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +28,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.collections.ArrayDeque
+import kotlin.collections.ArrayList
+import kotlin.math.max
 
 class NetController(
     private val session: GameSession,
@@ -94,16 +94,17 @@ class NetController(
         phase = Phase.CONNECTING
         statusFlow.value = Status(phase = Phase.CONNECTING)
         controllerJob?.cancel()
-        controllerJob = scope.launch {
-            socket.connect(config.wsUrl).collect { event ->
-                when (event) {
-                    is RtSocket.Event.Opened -> handleOpened()
-                    is RtSocket.Event.Message -> handleMessage(event)
-                    is RtSocket.Event.Closed -> handleClosed(event.reason)
-                    is RtSocket.Event.Failure -> handleFailure(event.throwable)
+        controllerJob =
+            scope.launch {
+                socket.connect(config.wsUrl).collect { event ->
+                    when (event) {
+                        is RtSocket.Event.Opened -> handleOpened()
+                        is RtSocket.Event.Message -> handleMessage(event)
+                        is RtSocket.Event.Closed -> handleClosed(event.reason)
+                        is RtSocket.Event.Failure -> handleFailure(event.throwable)
+                    }
                 }
             }
-        }
     }
 
     fun stop() {
@@ -114,7 +115,10 @@ class NetController(
         statusFlow.value = statusFlow.value.copy(phase = Phase.FINISHED)
     }
 
-    fun step(input: GameInput, dt: Float) {
+    fun step(
+        input: GameInput,
+        dt: Float,
+    ) {
         drainSnapshots()
         val tick = session.world.tick.toInt()
         val axisX = input.tilt.coerceIn(-1f, 1f)
@@ -132,7 +136,10 @@ class NetController(
         }
     }
 
-    fun sampleRemotePlayers(nowMs: Long, out: MutableList<PlayerUi>) {
+    fun sampleRemotePlayers(
+        nowMs: Long,
+        out: MutableList<PlayerUi>,
+    ) {
         interpolation.prune(nowMs, 1_000L)
         out.clear()
         remoteIdsScratch.clear()
@@ -233,7 +240,10 @@ class NetController(
         statusFlow.update { it.copy(phase = Phase.RUNNING) }
     }
 
-    private fun onSnapshot(ts: Long, snapshot: S2CSnapshot) {
+    private fun onSnapshot(
+        ts: Long,
+        snapshot: S2CSnapshot,
+    ) {
         if (awaitingStart) return
         snapshotQueue.addLast(SnapshotEnvelope(ts, snapshot))
     }
@@ -279,7 +289,10 @@ class NetController(
         }
     }
 
-    private fun applyLocalPlayer(tick: Int, player: NetPlayer) {
+    private fun applyLocalPlayer(
+        tick: Int,
+        player: NetPlayer,
+    ) {
         val world = session.world
         player.x?.let { world.player.position.x = it }
         player.y?.let { world.player.position.y = it }
@@ -305,7 +318,10 @@ class NetController(
         }
     }
 
-    private fun applyRemotePlayer(ts: Long, player: NetPlayer) {
+    private fun applyRemotePlayer(
+        ts: Long,
+        player: NetPlayer,
+    ) {
         val state = remotePlayerStates.getOrPut(player.id) { CompactState() }
         player.x?.let { state.x = it }
         player.y?.let { state.y = it }
@@ -350,7 +366,10 @@ class NetController(
         scope.launch { socket.send(message) }
     }
 
-    private fun sendInputBatch(fromTick: Int, toTick: Int) {
+    private fun sendInputBatch(
+        fromTick: Int,
+        toTick: Int,
+    ) {
         if (toTick < fromTick) return
         batchFrames.clear()
         var startTick = fromTick
