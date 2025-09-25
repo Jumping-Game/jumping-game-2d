@@ -43,12 +43,13 @@ import com.bene.jump.vm.LobbyUiState
 
 private data class CharacterPresentation(val name: String, val swatch: Color)
 
-private val CharacterCatalog = mapOf(
-    "jumper_red" to CharacterPresentation("Red Rocket", Color(0xFFE57373)),
-    "jumper_blue" to CharacterPresentation("Blue Comet", Color(0xFF64B5F6)),
-    "jumper_green" to CharacterPresentation("Green Glide", Color(0xFF81C784)),
-    "jumper_yellow" to CharacterPresentation("Golden Leap", Color(0xFFFFF176)),
-)
+private val CharacterCatalog =
+    mapOf(
+        "jumper_red" to CharacterPresentation("Red Rocket", Color(0xFFE57373)),
+        "jumper_blue" to CharacterPresentation("Blue Comet", Color(0xFF64B5F6)),
+        "jumper_green" to CharacterPresentation("Green Glide", Color(0xFF81C784)),
+        "jumper_yellow" to CharacterPresentation("Golden Leap", Color(0xFFFFF176)),
+    )
 
 @Composable
 fun LobbySetupScreen(
