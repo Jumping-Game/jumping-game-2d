@@ -1,5 +1,6 @@
 package com.bene.jump.net
 
+import com.bene.jump.core.net.C2SCharacterSelect
 import com.bene.jump.core.net.C2SInput
 import com.bene.jump.core.net.C2SInputBatch
 import com.bene.jump.core.net.C2SJoin
@@ -37,10 +38,18 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 import com.bene.jump.core.net.encodeEnvelope as encodeEnvelopeWith
 
+interface RtSocketClient {
+    fun connect(wsUrl: String): Flow<RtSocket.Event>
+
+    suspend fun send(obj: Any)
+
+    suspend fun close()
+}
+
 class RtSocket(
     client: OkHttpClient? = null,
     private val clock: () -> Long = { System.currentTimeMillis() },
-) {
+) : RtSocketClient {
     sealed class Event {
         object Opened : Event()
 
@@ -59,7 +68,7 @@ class RtSocket(
     private val seq = AtomicInteger(0)
     private val rateLimiter = RateLimiter(40)
 
-    fun connect(wsUrl: String): Flow<Event> {
+    override fun connect(wsUrl: String): Flow<Event> {
         return callbackFlow {
             val flowScope = this
             val job =
@@ -87,7 +96,7 @@ class RtSocket(
         }
     }
 
-    suspend fun send(obj: Any) {
+    override suspend fun send(obj: Any) {
         val text =
             when (obj) {
                 is String -> obj
@@ -136,6 +145,7 @@ class RtSocket(
             is C2SReconnect -> encodeWithPayload(envelope, payload, C2SReconnect.serializer())
             is C2SReadySet -> encodeWithPayload(envelope, payload, C2SReadySet.serializer())
             is C2SStartRequest -> encodeWithPayload(envelope, payload, C2SStartRequest.serializer())
+            is C2SCharacterSelect -> encodeWithPayload(envelope, payload, C2SCharacterSelect.serializer())
             else -> throw IllegalArgumentException("Unsupported envelope payload ${payload?.javaClass?.simpleName}")
         }
     }
@@ -288,6 +298,10 @@ class RtSocket(
         private val BACKOFF_DELAYS = longArrayOf(1_000L, 2_000L, 4_000L, 8_000L, 15_000L)
         private const val INPUT_TYPE = "input"
         private const val INPUT_BATCH_TYPE = "input_batch"
+    }
+
+    override suspend fun close() {
+        close(code = 1000, reason = "client")
     }
 
     suspend fun close(
