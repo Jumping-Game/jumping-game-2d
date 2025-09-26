@@ -169,6 +169,10 @@ data class C2SReadySet(val ready: Boolean) : C2SMessage
 @SerialName("start_request")
 data class C2SStartRequest(val countdownSec: Int? = null) : C2SMessage
 
+@Serializable
+@SerialName("character_select")
+data class C2SCharacterSelect(val characterId: String) : C2SMessage
+
 // ----- Server → Client -----
 
 sealed interface S2CMessage
@@ -216,6 +220,7 @@ data class S2CStart(
     val serverTick: Int,
     val serverTimeMs: Long,
     val tps: Int,
+    val players: List<LobbyPlayer>,
 ) : S2CMessage
 
 @Serializable
@@ -365,6 +370,7 @@ fun encodeC2S(
         is C2SReconnect -> encodeEnvelope(Envelope("reconnect", PROTOCOL_VERSION, seq, ts, message), C2SReconnect.serializer())
         is C2SReadySet -> encodeEnvelope(Envelope("ready_set", PROTOCOL_VERSION, seq, ts, message), C2SReadySet.serializer())
         is C2SStartRequest -> encodeEnvelope(Envelope("start_request", PROTOCOL_VERSION, seq, ts, message), C2SStartRequest.serializer())
+        is C2SCharacterSelect -> encodeEnvelope(Envelope("character_select", PROTOCOL_VERSION, seq, ts, message), C2SCharacterSelect.serializer())
     }
 }
 

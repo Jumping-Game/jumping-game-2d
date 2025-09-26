@@ -11,6 +11,7 @@ import com.bene.jump.core.net.Checksums
 import com.bene.jump.core.net.ClientPredBuffer
 import com.bene.jump.core.net.CompactState
 import com.bene.jump.core.net.Interpolator
+import com.bene.jump.core.net.LobbyPlayer
 import com.bene.jump.core.net.NetErrorCode
 import com.bene.jump.core.net.NetPlayer
 import com.bene.jump.core.net.Role
@@ -43,7 +44,7 @@ import kotlin.math.roundToInt
 
 class NetController(
     private val session: GameSession,
-    private val socket: RtSocket,
+    private val socket: RtSocketClient,
     private val scope: CoroutineScope,
     private val prefsStore: NetPrefsStore? = null,
     private val clock: () -> Long = { System.currentTimeMillis() },
@@ -97,6 +98,7 @@ class NetController(
     private var interpolationDelayMs: Long = 100L
     private var useInputBatch: Boolean = true
     private var lobbyMaxPlayers: Int = 0
+    private var roster: List<LobbyPlayer> = emptyList()
 
     fun start(config: Config) {
         this.config = config
@@ -146,12 +148,18 @@ class NetController(
         phase = ConnectionPhase.Finished
         roomState = RoomState.FINISHED
         countdown = null
+        roster = emptyList()
+        lobbyMaxPlayers = 0
+        role = Role.MEMBER
         stateFlow.update {
             it.copy(
                 connectionPhase = phase,
                 connected = false,
                 roomState = roomState,
                 countdown = null,
+                lobby = roster,
+                lobbyMaxPlayers = lobbyMaxPlayers,
+                role = role,
             )
         }
     }
@@ -299,7 +307,9 @@ class NetController(
         remotePlayerStates.clear()
         awaitingStart = welcome.roomState != RoomState.RUNNING
         val lobbyPlayers = welcome.lobby?.players.orEmpty()
-        lobbyMaxPlayers = welcome.lobby?.maxPlayers ?: lobbyMaxPlayers
+        lobbyMaxPlayers = welcome.lobby?.maxPlayers ?: 0
+        roster = lobbyPlayers
+        roster.firstOrNull { it.id == playerId }?.let { role = it.role }
         if (roomState == RoomState.RUNNING) {
             phase = ConnectionPhase.Running
         } else if (roomState == RoomState.FINISHED) {
@@ -315,7 +325,7 @@ class NetController(
                 roomId = welcome.roomId,
                 role = role,
                 roomState = roomState,
-                lobby = lobbyPlayers,
+                lobby = roster,
                 lobbyMaxPlayers = lobbyMaxPlayers,
                 countdown = countdown,
                 resumeToken = welcome.resumeToken,
@@ -335,11 +345,16 @@ class NetController(
         phase = ConnectionPhase.Running
         roomState = RoomState.RUNNING
         countdown = null
+        roster = start.players
+        roster.firstOrNull { it.id == playerId }?.let { self -> role = self.role }
         stateFlow.update {
             it.copy(
                 connectionPhase = phase,
                 roomState = roomState,
                 countdown = null,
+                lobby = roster,
+                role = role,
+                lobbyMaxPlayers = lobbyMaxPlayers,
             )
         }
     }
@@ -382,18 +397,28 @@ class NetController(
         if (presence.state == "left") {
             remotePlayerStates.remove(presence.id)
             interpolation.remove(presence.id)
+            if (presence.id != playerId) {
+                roster = roster.filterNot { it.id == presence.id }
+                stateFlow.update { it.copy(lobby = roster) }
+            }
         }
     }
 
     private fun onLobbyState(state: S2CLobbyState) {
         roomState = state.roomState
         countdown = countdown.takeIf { roomState == RoomState.STARTING }
+        roster = state.players
+        if (state.maxPlayers > 0) {
+            lobbyMaxPlayers = state.maxPlayers
+        }
+        roster.firstOrNull { it.id == playerId }?.let { player -> role = player.role }
         stateFlow.update {
             it.copy(
                 roomState = roomState,
-                lobby = state.players,
-                lobbyMaxPlayers = state.maxPlayers,
+                lobby = roster,
+                lobbyMaxPlayers = lobbyMaxPlayers,
                 countdown = countdown,
+                role = role,
             )
         }
     }
@@ -406,6 +431,7 @@ class NetController(
             it.copy(
                 roomState = roomState,
                 countdown = countdown,
+                lobby = roster,
             )
         }
     }
@@ -416,7 +442,14 @@ class NetController(
         } else if (role == Role.MASTER) {
             role = Role.MEMBER
         }
-        stateFlow.update { it.copy(role = role) }
+        roster =
+            roster.map { player ->
+                when (player.id) {
+                    roleChanged.newMasterId -> player.copy(role = Role.MASTER)
+                    else -> if (player.role == Role.MASTER) player.copy(role = Role.MEMBER) else player
+                }
+            }
+        stateFlow.update { it.copy(role = role, lobby = roster) }
     }
 
     private fun onPong(
@@ -445,6 +478,18 @@ class NetController(
 
     private fun applySnapshot(envelope: SnapshotEnvelope) {
         val snapshot = envelope.snapshot
+        if (snapshot.full) {
+            val ids = snapshot.players.mapTo(mutableSetOf()) { it.id }
+            val iterator = remotePlayerStates.keys.iterator()
+            while (iterator.hasNext()) {
+                val id = iterator.next()
+                if (id == playerId) continue
+                if (!ids.contains(id)) {
+                    iterator.remove()
+                    interpolation.remove(id)
+                }
+            }
+        }
         snapshot.ackTick?.let {
             if (it > lastAckTick) {
                 lastAckTick = it
