@@ -370,7 +370,11 @@ fun encodeC2S(
         is C2SReconnect -> encodeEnvelope(Envelope("reconnect", PROTOCOL_VERSION, seq, ts, message), C2SReconnect.serializer())
         is C2SReadySet -> encodeEnvelope(Envelope("ready_set", PROTOCOL_VERSION, seq, ts, message), C2SReadySet.serializer())
         is C2SStartRequest -> encodeEnvelope(Envelope("start_request", PROTOCOL_VERSION, seq, ts, message), C2SStartRequest.serializer())
-        is C2SCharacterSelect -> encodeEnvelope(Envelope("character_select", PROTOCOL_VERSION, seq, ts, message), C2SCharacterSelect.serializer())
+        is C2SCharacterSelect ->
+            encodeEnvelope(
+                Envelope("character_select", PROTOCOL_VERSION, seq, ts, message),
+                C2SCharacterSelect.serializer(),
+            )
     }
 }
 
