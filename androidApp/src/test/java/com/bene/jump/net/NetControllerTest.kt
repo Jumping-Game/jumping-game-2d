@@ -10,10 +10,10 @@ import com.bene.jump.core.net.NetWorldCfg
 import com.bene.jump.core.net.PROTOCOL_VERSION
 import com.bene.jump.core.net.Role
 import com.bene.jump.core.net.RoomState
+import com.bene.jump.core.net.S2CMessage
 import com.bene.jump.core.net.S2CSnapshot
 import com.bene.jump.core.net.S2CStart
 import com.bene.jump.core.net.S2CWelcome
-import com.bene.jump.core.net.S2CMessage
 import com.bene.jump.core.sim.GameSession
 import com.bene.jump.vm.PlayerUi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -42,77 +42,79 @@ class NetControllerTest {
         )
 
     @Test
-    fun `start roster updates lobby and role`() = runTest(dispatcher) {
-        startConnection()
-        val roster = roster()
-        emitWelcome(roster)
-        emitStart(roster)
+    fun `start roster updates lobby and role`() =
+        runTest(dispatcher) {
+            startConnection()
+            val roster = roster()
+            emitWelcome(roster)
+            emitStart(roster)
 
-        val state = controller.state.value
-        assertEquals(RoomState.RUNNING, state.roomState)
-        assertEquals(roster, state.lobby)
-        assertEquals(Role.MASTER, state.role)
-    }
+            val state = controller.state.value
+            assertEquals(RoomState.RUNNING, state.roomState)
+            assertEquals(roster, state.lobby)
+            assertEquals(Role.MASTER, state.role)
+        }
 
     @Test
-    fun `full snapshot removes missing remote players`() = runTest(dispatcher) {
-        startConnection()
-        val roster = roster()
-        emitWelcome(roster)
-        emitStart(roster)
+    fun `full snapshot removes missing remote players`() =
+        runTest(dispatcher) {
+            startConnection()
+            val roster = roster()
+            emitWelcome(roster)
+            emitStart(roster)
 
-        socket.emit(
-            RtSocket.Event.Message(
-                envelope(
-                    type = "snapshot",
-                    ts = 50L,
-                    payload =
-                        S2CSnapshot(
-                            tick = 10,
-                            ackTick = 10,
-                            lastInputSeq = 1,
-                            full = true,
-                            players =
-                                listOf(
-                                    NetPlayer(id = "p1", x = 1f, y = 2f, vx = 0f, vy = 0f, alive = true),
-                                    NetPlayer(id = "p2", x = 3f, y = 4f, vx = 0f, vy = 0f, alive = true),
-                                ),
-                            events = null,
-                            stats = null,
-                        ),
+            socket.emit(
+                RtSocket.Event.Message(
+                    envelope(
+                        type = "snapshot",
+                        ts = 50L,
+                        payload =
+                            S2CSnapshot(
+                                tick = 10,
+                                ackTick = 10,
+                                lastInputSeq = 1,
+                                full = true,
+                                players =
+                                    listOf(
+                                        NetPlayer(id = "p1", x = 1f, y = 2f, vx = 0f, vy = 0f, alive = true),
+                                        NetPlayer(id = "p2", x = 3f, y = 4f, vx = 0f, vy = 0f, alive = true),
+                                    ),
+                                events = null,
+                                stats = null,
+                            ),
+                    ),
                 ),
-            ),
-        )
-        scope.runCurrent()
+            )
+            scope.runCurrent()
 
-        val remote = mutableListOf<PlayerUi>()
-        controller.sampleRemotePlayers(nowMs = 50L, out = remote)
-        assertEquals(1, remote.size)
+            val remote = mutableListOf<PlayerUi>()
+            controller.sampleRemotePlayers(nowMs = 50L, out = remote)
+            assertEquals(1, remote.size)
 
-        socket.emit(
-            RtSocket.Event.Message(
-                envelope(
-                    type = "snapshot",
-                    ts = 100L,
-                    payload =
-                        S2CSnapshot(
-                            tick = 20,
-                            ackTick = 20,
-                            lastInputSeq = 2,
-                            full = true,
-                            players = listOf(NetPlayer(id = "p1", x = 2f, y = 3f, vx = 0f, vy = 0f, alive = true)),
-                            events = null,
-                            stats = null,
-                        ),
+            socket.emit(
+                RtSocket.Event.Message(
+                    envelope(
+                        type = "snapshot",
+                        ts = 100L,
+                        payload =
+                            S2CSnapshot(
+                                tick = 20,
+                                ackTick = 20,
+                                lastInputSeq = 2,
+                                full = true,
+                                players = listOf(NetPlayer(id = "p1", x = 2f, y = 3f, vx = 0f, vy = 0f, alive = true)),
+                                events = null,
+                                stats = null,
+                            ),
+                    ),
                 ),
-            ),
-        )
-        scope.runCurrent()
+            )
+            scope.runCurrent()
 
-        remote.clear()
-        controller.sampleRemotePlayers(nowMs = 100L, out = remote)
-        assertTrue(remote.isEmpty())
-    }
+            remote.clear()
+            controller.sampleRemotePlayers(nowMs = 100L, out = remote)
+            assertTrue(remote.isEmpty())
+        }
 
     private suspend fun startConnection() {
         controller.start(
